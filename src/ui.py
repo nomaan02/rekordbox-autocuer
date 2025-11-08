@@ -13,6 +13,7 @@ from PyQt5.QtGui import QPen, QColor, QPainter, QFont
 
 from rekordbox_parser import parse_rekordbox_xml, get_playlist_tracks, extract_track_audio_path
 from audio_processor import load_audio_file, generate_waveform_data
+from batch_processor import process_track_batch
 
 
 class WaveformCanvas(QGraphicsView):
@@ -131,6 +132,8 @@ class RecordboxAutocuerApp(QMainWindow):
 
         # Data
         self.xml_data = None
+        self.xml_file_path = None  # Store original XML path for export
+        self.current_playlist_name = None  # Store current playlist name
         self.current_playlist_tracks = []
         self.current_track_index = 0
         self.drop_markers = {}  # track_id -> drop_position mapping
@@ -226,6 +229,18 @@ class RecordboxAutocuerApp(QMainWindow):
 
         main_layout.addLayout(button_layout)
 
+        # === EXPORT BUTTON (shown after marking complete) ===
+        export_layout = QHBoxLayout()
+
+        self.export_button = QPushButton("Process & Export XML")
+        self.export_button.setEnabled(False)
+        self.export_button.setVisible(False)
+        self.export_button.clicked.connect(self.export_xml)
+        self.export_button.setStyleSheet("background-color: #4CAF50; color: white; font-size: 16px; font-weight: bold; padding: 15px;")
+        export_layout.addWidget(self.export_button)
+
+        main_layout.addLayout(export_layout)
+
         # Status bar
         self.statusBar().showMessage("Ready. Load a Rekordbox XML file to begin.")
 
@@ -241,6 +256,7 @@ class RecordboxAutocuerApp(QMainWindow):
         if file_path:
             try:
                 self.xml_data = parse_rekordbox_xml(file_path)
+                self.xml_file_path = file_path  # Store for later export
                 self.xml_path_label.setText(f"Loaded: {os.path.basename(file_path)}")
                 self.xml_path_label.setStyleSheet("color: green;")
 
@@ -269,6 +285,7 @@ class RecordboxAutocuerApp(QMainWindow):
             tracks = get_playlist_tracks(self.xml_data, playlist_name)
 
             if tracks:
+                self.current_playlist_name = playlist_name  # Store playlist name
                 self.current_playlist_tracks = tracks
                 self.start_button.setEnabled(True)
                 self.statusBar().showMessage(f"Selected playlist: {playlist_name} ({len(tracks)} tracks)")
@@ -374,11 +391,23 @@ class RecordboxAutocuerApp(QMainWindow):
 
     def finish_processing(self):
         """Finish the batch processing workflow."""
-        QMessageBox.information(
-            self,
-            "Processing Complete",
-            f"Batch processing complete!\n\nMarked drops for {len(self.drop_markers)} tracks."
-        )
+        # Check if any tracks were marked
+        if len(self.drop_markers) == 0:
+            QMessageBox.information(
+                self,
+                "No Tracks Marked",
+                "No drops were marked. Please mark at least one track to export."
+            )
+        else:
+            QMessageBox.information(
+                self,
+                "Marking Complete",
+                f"Batch marking complete!\n\nMarked drops for {len(self.drop_markers)} tracks.\n\nClick 'Process & Export XML' to generate the modified Rekordbox file."
+            )
+
+            # Show and enable export button
+            self.export_button.setVisible(True)
+            self.export_button.setEnabled(True)
 
         # Re-enable controls
         self.start_button.setEnabled(True)
@@ -395,10 +424,107 @@ class RecordboxAutocuerApp(QMainWindow):
         self.key_label.setText("Key: --")
         self.duration_label.setText("Duration: --")
 
-        self.statusBar().showMessage("Processing complete. Ready for next batch.")
+        if len(self.drop_markers) > 0:
+            self.statusBar().showMessage("Marking complete. Click 'Process & Export XML' to continue.")
+        else:
+            self.statusBar().showMessage("Processing complete. Ready for next batch.")
 
-        # TODO: Save drop markers back to Rekordbox XML
-        print("Drop markers:", self.drop_markers)
+    def export_xml(self):
+        """Process marked tracks and export modified XML."""
+        if not self.drop_markers:
+            QMessageBox.warning(
+                self,
+                "No Tracks Marked",
+                "No tracks have been marked with drop points. Please mark tracks first."
+            )
+            return
+
+        if not self.xml_file_path:
+            QMessageBox.critical(
+                self,
+                "Error",
+                "Original XML file path not found. Please reload the XML file."
+            )
+            return
+
+        # Confirmation dialog
+        reply = QMessageBox.question(
+            self,
+            "Confirm Export",
+            f"Process {len(self.drop_markers)} tracks and generate modified XML?\n\n"
+            f"This will calculate and insert cue points based on the marked drops.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.Yes
+        )
+
+        if reply == QMessageBox.No:
+            return
+
+        # Disable export button during processing
+        self.export_button.setEnabled(False)
+        self.statusBar().showMessage("Processing tracks and generating XML...")
+        QApplication.processEvents()
+
+        try:
+            # Call batch processor
+            output_path = process_track_batch(
+                self.xml_file_path,
+                self.drop_markers
+            )
+
+            # Success dialog with instructions
+            success_msg = QMessageBox(self)
+            success_msg.setIcon(QMessageBox.Information)
+            success_msg.setWindowTitle("Export Successful")
+            success_msg.setText(f"Modified XML exported successfully!")
+            success_msg.setInformativeText(
+                f"File saved to:\n{output_path}\n\n"
+                f"To import into Rekordbox:\n"
+                f"1. Open Rekordbox\n"
+                f"2. Go to File > Import Collection\n"
+                f"3. Select the exported XML file\n"
+                f"4. Rekordbox will merge the cue points with your existing library\n\n"
+                f"Note: This preserves your existing tracks and only updates cue points."
+            )
+            success_msg.setStandardButtons(QMessageBox.Ok)
+            success_msg.exec_()
+
+            self.statusBar().showMessage(f"Export complete: {output_path}")
+
+            # Reset for next batch
+            self.export_button.setEnabled(True)
+
+        except FileNotFoundError as e:
+            QMessageBox.critical(
+                self,
+                "File Not Found",
+                f"XML file not found:\n{str(e)}"
+            )
+            self.export_button.setEnabled(True)
+
+        except ValueError as e:
+            QMessageBox.critical(
+                self,
+                "Processing Error",
+                f"Failed to process tracks:\n{str(e)}"
+            )
+            self.export_button.setEnabled(True)
+
+        except IOError as e:
+            QMessageBox.critical(
+                self,
+                "Export Error",
+                f"Failed to export XML:\n{str(e)}"
+            )
+            self.export_button.setEnabled(True)
+
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Unexpected Error",
+                f"An unexpected error occurred:\n{str(e)}"
+            )
+            self.export_button.setEnabled(True)
 
 
 def main():

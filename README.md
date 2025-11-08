@@ -10,6 +10,8 @@ Batch cue-point automation for Rekordbox DJ software with manual drop marking.
 - **Click-to-Mark**: Click anywhere on the waveform to mark drop points
 - **Batch Processing**: Process multiple tracks in sequence
 - **Progress Tracking**: Visual progress bar showing track position
+- **BPM-Based Cue Generation**: Automatically calculates cue points at ±16/±32 bars from drop
+- **XML Export**: Generates modified Rekordbox XML with inserted cue points
 
 ## Setup
 
@@ -35,34 +37,85 @@ python main.py
 4. **Start Processing**: Click "Start Processing" button
 5. **Mark Drops**: For each track:
    - Click on the waveform where the drop occurs (red line will appear)
-   - Press "Mark Drop" button or skip to next track
+   - Press "Mark Drop" button to save and move to next track
    - Or press "Skip Track" to skip without marking
-6. **Complete**: When done, drop markers are saved (ready for export in Phase 3)
+6. **Process & Export**: After marking all tracks:
+   - Click "Process & Export XML" button
+   - The app will calculate cue points and generate modified XML
+   - File saved to `exports/rekordbox_autocued_YYYY-MM-DD_HH-MM-SS.xml`
+7. **Import to Rekordbox**:
+   - Open Rekordbox
+   - Go to File → Import Collection
+   - Select the exported XML file
+   - Rekordbox will merge the cue points with your existing library
 
 ## Project Structure
 
 ```
 rekordbox-autocuer/
 ├── src/
-│   ├── rekordbox_parser.py   # XML parsing functions
-│   ├── audio_processor.py     # Audio loading and waveform generation
-│   └── ui.py                  # PyQt5 GUI application
-├── main.py                    # Application entry point
-└── requirements.txt           # Python dependencies
+│   ├── rekordbox_parser.py    # XML parsing and modification
+│   ├── audio_processor.py      # Audio loading and waveform generation
+│   ├── cue_generator.py        # BPM-based cue calculation engine
+│   ├── batch_processor.py      # Batch processing workflow
+│   ├── ui.py                   # PyQt5 GUI application
+│   └── test_cue_generator.py   # Unit tests for cue generation
+├── exports/                    # Generated XML files (created automatically)
+├── main.py                     # Application entry point
+└── requirements.txt            # Python dependencies
 ```
 
-## Current Phase: Phase 2 - UI Framework ✓
+## Cue Point Layout
 
-### Completed
-- ✅ XML parser with playlist and track extraction
-- ✅ Audio loading with librosa
-- ✅ Waveform visualization with RMS amplitude
-- ✅ Interactive GUI with PyQt5
-- ✅ Click-to-mark drop point functionality
-- ✅ BPM-based grid overlay
-- ✅ Batch processing workflow
+For each marked drop, the app generates 5 cue points:
 
-### Next Phase: Phase 3 - XML Export
-- Save marked drop points back to Rekordbox XML format
-- Generate cue points at marked positions
-- Export modified XML for re-import to Rekordbox
+| Position | Type | Name | Color |
+|----------|------|------|-------|
+| Drop - 32 bars | Memory | "-32 bars" | Orange |
+| Drop - 16 bars | Memory | "-16 bars" | Yellow |
+| Drop | Hot Cue | "Drop" | Red |
+| Drop + 16 bars | Memory | "+16 bars" | Blue |
+| Drop + 32 bars | Memory | "+32 bars" | Aqua |
+
+Bar calculations are based on track BPM and 4/4 time signature.
+
+## Development Status
+
+### ✅ Phase 1: XML Parser & Audio Loader
+- XML parsing with lxml
+- Playlist and track extraction
+- Audio loading with librosa
+- Waveform generation
+
+### ✅ Phase 2: UI Framework
+- PyQt5 GUI with interactive waveform
+- Click-to-mark drop functionality
+- BPM-based grid overlay
+- Batch processing workflow
+
+### ✅ Phase 3: Cue Generation Engine
+- BPM-based bar calculations
+- Cue position validation
+- Grid snapping functionality
+- Comprehensive unit tests (27 tests)
+
+### ✅ Phase 4: XML Export
+- XML modification functions
+- Memory cue and hot cue insertion
+- Batch processing with logging
+- Timestamped exports
+- Error handling and validation
+
+## Testing
+
+Run unit tests:
+```bash
+python -m pytest src/test_cue_generator.py -v
+```
+
+All 27 tests should pass, covering:
+- Standard BPM cases (120, 128, 140, 180)
+- Edge cases (short tracks, drop near start/end)
+- Grid snapping
+- Validation
+- Error handling
