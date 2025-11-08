@@ -1,0 +1,14 @@
+﻿__pycache__/
+*.pyc
+*.pyo
+venv/
+.env
+*.db
+*.xml
+exports/
+logs/
+*.wav
+*.mp3
+*.flac
+*.aiff
+.DS_Store
