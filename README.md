@@ -1,6 +1,5 @@
 # Rekordbox AutoCuer
-
-**Status:** ✅ Working tool
+![Status](https://img.shields.io/badge/status-working-brightgreen)
 
 Batch cue-point automation for Rekordbox DJ software with manual drop marking.
 
