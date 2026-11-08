@@ -1,6 +1,6 @@
 # Rekordbox AutoCuer
 
-**Status:** 📐 Architecture showcase · source code is private
+**Status:** ✅ Working tool
 
 Batch cue-point automation for Rekordbox DJ software with manual drop marking.
 
